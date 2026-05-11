@@ -9,13 +9,19 @@
 
 ---
 
-## What this is
+## 📖 What this is
 
 A production-ready **BigQuery MCP server** you deploy to your own GCP project. AI agents connect over HTTPS and can do exactly two things: read the schemas of tables you explicitly allowlist, and run `SELECT` queries against them — subject to a configurable scan budget, a result-row cap, and a token-bucket rate limit. Nothing else. No `DROP`, no `INSERT`, no schema discovery beyond what you allow, no surprise billing.
 
 It exists because the alternatives — including Google's official BigQuery MCP server — expose **every** table that the underlying service account can reach. That's the right default for trusted internal analysts. It's the wrong default for an autonomous agent that might be invoked by a customer-facing chatbot, a third-party tool, or a prompt-injected document.
 
-## Why pick this over Google's official BigQuery MCP server
+## 💬 Use case
+
+You: Give me the highest-converting campaign in the last 30 days.<br />
+LLM: *queries your data and returns the result*<br /><br />
+Connect once, query everything. Point it at your Google Analytics 4 export, or import Google Ads, Meta, and TikTok into BigQuery to analyze every campaign across every channel from a single agent.
+
+## 🏆 Why pick this over Google's official BigQuery MCP server
 
 1. **Hard table allowlist enforced in code, not just IAM.** You list `(dataset, table)` pairs in env vars. Anything outside the allowlist is rejected at the SQL parser before a job is ever submitted — including qualified references like `wrong_dataset.allowed_table`. Google's server lets the agent see every table the SA's IAM permits.
 
@@ -37,7 +43,7 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 
 10. **One file, MIT licensed, ~1400 lines.** Read the source. Fork it. Add a custom validator. Swap the auth scheme. You can't do any of that with a managed closed-source server.
 
-## Comparison table
+## ⚖️ Comparison table
 
 | | This server | Google official BigQuery MCP
 |---|---|---|
@@ -62,7 +68,7 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 
 **When to pick this server:** anything else — especially production agents, customer-facing deployments, regulated environments, multi-tenant scenarios, and anywhere the words "scan budget" or "rate limit" matter.
 
-## Architecture at a glance
+## 🏗️ Architecture at a glance
 
 ```
 ┌─────────────┐       HTTPS + X-API-KEY       ┌──────────────────────┐         IAM        ┌───────────┐
@@ -78,7 +84,7 @@ It exists because the alternatives — including Google's official BigQuery MCP 
                                                                                           └───────────┘
 ```
 
-## Required GCP services
+## ☁️ Required GCP services
 
 Enable these APIs in your project:
 
@@ -105,7 +111,7 @@ gcloud services enable \
   cloudbuild.googleapis.com
 ```
 
-## Service account permissions (least privilege)
+## 🔐 Service account permissions (least privilege)
 
 Create a dedicated service account — **do not** reuse one. The service needs the absolute minimum: read access to specific BigQuery tables, the ability to run query jobs, and read access to two secrets.
 
@@ -118,7 +124,7 @@ gcloud iam service-accounts create $SA_NAME \
   --display-name="BigQuery Read-Only MCP Server"
 ```
 
-### Required IAM roles
+### 🔑 Required IAM roles
 
 | Role | Scope | Why |
 |---|---|---|
@@ -171,7 +177,7 @@ gcloud secrets add-iam-policy-binding mcp-admin-key \
 
 That's the entire IAM footprint. Do **not** grant `bigquery.user`, `bigquery.admin`, `editor`, or `owner` — none of those are needed and all of them grant strictly more than necessary.
 
-## Quick start
+## 🚀 Quick start
 
 ### 1. Generate and store API keys
 
@@ -261,7 +267,7 @@ Datasets and tables are paired **positionally**: index 0 pairs with index 0. The
 }
 ```
 
-## Configuration reference
+## ⚙️ Configuration reference
 
 All configuration is via environment variables. Required vars abort startup if missing; everything else has a default.
 
@@ -286,7 +292,7 @@ All configuration is via environment variables. Required vars abort startup if m
 | `META_CONCURRENCY` | No | `3` | Max concurrent metadata calls |
 | `ADMIN_RATE_LIMIT_QPM` | No | `10` | Separate rate limit for admin endpoint |
 
-## Security model
+## 🛡️ Security model
 
 The threat model is: **an AI agent is partially or fully untrusted, and may be invoked with adversarial input.** The controls are layered.
 
@@ -308,7 +314,7 @@ What the server does **not** do (and you should know):
 - **No per-user attribution.** The API key is shared across clients. For per-user audit trails, put an identity-aware proxy in front, or fork and add OAuth.
 - **No write support, ever.** This is intentional. If you need writes, use a different server.
 
-## Local development
+## 💻 Local development
 
 ```bash
 git clone https://github.com/YOUR_ORG/bigquery-readonly-mcp-server.git
@@ -333,22 +339,22 @@ uvicorn main:app --host 0.0.0.0 --port 8080 --reload
 
 The MCP endpoint will be at `http://localhost:8080/mcp` and `/health` returns service status.
 
-## Operations
+## 🛠️ Operations
 
-### Invalidate the schema cache after a schema change
+### 🔄 Invalidate the schema cache after a schema change
 
 ```bash
 curl -X POST "https://your-service.run.app/admin/invalidate-cache" \
   -H "x-admin-key: $MCP_ADMIN_KEY"
 ```
 
-### Tail logs
+### 📜 Tail logs
 
 ```bash
 gcloud run services logs tail bigquery-readonly-mcp --region=$REGION
 ```
 
-### Query the audit trail
+### 🔍 Query the audit trail
 
 Every BigQuery job is recorded in Cloud Audit Logs. To see what queries the MCP server has run:
 
@@ -364,7 +370,7 @@ ORDER BY timestamp DESC
 LIMIT 100;
 ```
 
-## Limitations
+## ⚠️ Limitations
 
 - **One region per deployment.** Cloud Run is regional. For multi-region failover, deploy multiple instances behind a global load balancer.
 - **Cold starts.** Scale-to-zero means the first request after idle takes a few seconds. Set `--min-instances=1` to eliminate this at the cost of a few dollars per month.
@@ -372,7 +378,7 @@ LIMIT 100;
 - **Schema cache is per-instance.** Each Cloud Run instance maintains its own. The admin endpoint invalidates the cache on the instance that receives the call; under load with multiple instances, you may want to roll a new revision instead.
 - **No streaming results.** Queries materialize fully server-side before truncation. Don't increase `MAX_RESULT_ROWS` beyond a few thousand without considering memory.
 
-## Frequently asked questions
+## ❓Frequently asked questions
 
 **Does this work with Claude Desktop?** Yes, via the `url` + `headers` config above. Also works with Cursor, Windsurf, Claude Code, the OpenAI Responses API, and anything else that speaks streamable-HTTP MCP.
 
@@ -386,11 +392,11 @@ LIMIT 100;
 
 **Does it support `bq` legacy SQL?** No. Standard SQL (GoogleSQL) only.
 
-## Contributing
+## 🤝 Contributing
 
 PRs welcome. Issues with reproductions get prioritized.
 
-## License
+## 📄 License
 
 MIT. See [LICENSE](./LICENSE).
 
