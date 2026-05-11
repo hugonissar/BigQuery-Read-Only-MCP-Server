@@ -6,6 +6,7 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Cloud Run](https://img.shields.io/badge/runs%20on-Cloud%20Run-4285F4.svg)](https://cloud.google.com/run)
 [![MCP](https://img.shields.io/badge/protocol-MCP-orange.svg)](https://modelcontextprotocol.io)
+[![Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Compatible-D97757?logo=claude&logoColor=fff)](https://claude.ai/download)
 
 ---
 
