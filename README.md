@@ -37,26 +37,26 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 
 10. **One file, MIT licensed, ~1400 lines.** Read the source. Fork it. Add a custom validator. Swap the auth scheme. You can't do any of that with a managed closed-source server.
 
-## Honest comparison table
+## Comparison table
 
-| | This server | Google official BigQuery MCP | `ergut/mcp-bigquery-server` |
-|---|---|---|---|
-| **Deployment model** | Self-hosted on Cloud Run | Managed remote endpoint | Local (npx / stdio) |
-| **Auth** | Bearer API key + admin key | Google IAM / OAuth | Service account JSON file |
-| **Table access control** | Hard allowlist of `(dataset, table)` pairs, enforced in code | IAM only — any reachable table | Allowlist + field-level `preventedFields` |
-| **Per-query scan cap** | Yes (`MAX_SCAN_MB`, enforced via dry-run) | No (relies on IAM / BQ quotas) | Yes (`--maximum-bytes-billed`) |
-| **Rate limiting** | Built-in token bucket + burst | None (per Google's docs) | None |
-| **Result row cap** | Yes (`MAX_RESULT_ROWS`) | No | No |
-| **Dry-run / schema cache** | Yes (LRU + TTL) | No | No |
-| **Read-only enforcement** | SQL parser + IAM | IAM only | SQL parser + IAM |
-| **Tools exposed** | 2 (schema, query) | 5+ including `execute_sql`, forecasting, dataset/table listing | 4 (datasets, tables, query, schema) |
-| **Forecasting / ML helpers** | No (write your own SQL) | Yes (built-in `forecast`) | No |
-| **Prompt-injection scanning** | No | Yes (via Model Armor, paid add-on) | No |
-| **Audit logging** | Cloud Logging + BQ audit logs | Cloud Audit Logs | Local stderr |
-| **Source code** | Open (MIT) | Closed | Open (MIT) |
-| **Idle cost** | ~$0 (scales to zero) | N/A (managed) | $0 (local) |
-| **Fork & modify** | Yes | No | Yes |
-| **Region locked** | Choose any Cloud Run region | Google's regions only | Local |
+| | This server | Google official BigQuery MCP
+|---|---|---|
+| **Deployment model** | Self-hosted on Cloud Run | Managed remote endpoint |
+| **Auth** | API key + admin key | Google IAM / OAuth |
+| **Table access control** | Hard allowlist of `(dataset, table)` pairs, enforced in code | IAM only — any reachable table |
+| **Per-query scan cap** | Yes (`MAX_SCAN_MB`, enforced via dry-run) | No (relies on IAM / BQ quotas) |
+| **Rate limiting** | Built-in token bucket + burst | None (per Google's docs) |
+| **Result row cap** | Yes (`MAX_RESULT_ROWS`) | No |
+| **Dry-run / schema cache** | Yes (LRU + TTL) | No |
+| **Read-only enforcement** | SQL parser + IAM | IAM only |
+| **Tools exposed** | 2 (schema, query) | 5+ including `execute_sql`, forecasting, dataset/table listing |
+| **Forecasting / ML helpers** | No (write your own SQL) | Yes (built-in `forecast`) |
+| **Prompt-injection scanning** | No | Yes (via Model Armor, paid add-on) |
+| **Audit logging** | Cloud Logging + BQ audit logs | Cloud Audit Logs |
+| **Source code** | Open (MIT) | Closed |
+| **Idle cost** | ~$0 (scales to zero) | N/A (managed) |
+| **Fork & modify** | Yes | No |
+| **Region locked** | Choose any Cloud Run region | Google's regions only |
 
 **When to pick Google's server instead:** if you want forecasting and ARIMA out of the box, if you need Model Armor for prompt-injection scanning, or if you're comfortable letting the agent see everything the SA's IAM reaches and you don't need a hard scan ceiling.
 
@@ -67,9 +67,9 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 ## Architecture at a glance
 
 ```
-┌─────────────┐         HTTPS + Bearer        ┌──────────────────────┐         IAM        ┌───────────┐
+┌─────────────┐       HTTPS + X-API-KEY       ┌──────────────────────┐         IAM        ┌───────────┐
 │ MCP client  │ ────────────────────────────▶ │  Cloud Run service   │ ─────────────────▶ │ BigQuery  │
-│ (Claude /   │   Authorization: Bearer KEY   │  bigquery-readonly-  │   service account  │  datasets │
+│ (Claude /   │   API KEY                     │  bigquery-readonly-  │   service account  │  datasets │
 │  Cursor /   │                               │       mcp-server     │                    │  + tables │
 │  ChatGPT)   │                               │                      │                    │           │
 └─────────────┘                               │  • SQL allowlist     │                    └───────────┘
@@ -178,7 +178,7 @@ That's the entire IAM footprint. Do **not** grant `bigquery.user`, `bigquery.adm
 ### 1. Generate and store API keys
 
 ```bash
-# MCP API key (clients use this in Authorization: Bearer header)
+# MCP API key (clients use this in X-API-KEY)
 openssl rand -hex 32 | gcloud secrets create mcp-api-key --data-file=-
 
 # Admin key (for the /admin endpoint — schema cache invalidation)
@@ -215,8 +215,16 @@ BQ_ALLOWED_TABLE=your_table,\
 MAX_SCAN_MB=100,\
 MAX_RESULT_ROWS=2000,\
 BQ_JOB_TIMEOUT_SECS=60,\
+MAX_SQL_LENGTH=2000,\
+SCHEMA_TTL_SECS=300,\
+DRY_RUN_CACHE_TTL_SECS=60,\
+DRY_RUN_CACHE_MAX_ENTRIES=1000,\
 RATE_LIMIT_QPM=20,\
-RATE_LIMIT_BURST=5" \
+RATE_LIMIT_BURST=5,\
+QUERY_CONCURRENCY=10,\
+META_CONCURRENCY=3,\
+ADMIN_RATE_LIMIT_QPM=10,\
+MAX_REQUEST_BODY_BYTES=65536" \
   --allow-unauthenticated \
   --port 8080
 ```
@@ -231,7 +239,7 @@ gcloud run deploy bigquery-readonly-mcp \
 GCP_PROJECT_ID=${PROJECT_ID}@\
 BQ_DATASET_ID=analytics,reporting,raw@\
 BQ_ALLOWED_TABLE=events,daily_summary,events@\
-MAX_SCAN_MB=500"
+MAX_SCAN_MB=100"
 ```
 
 Datasets and tables are paired **positionally**: index 0 pairs with index 0. The example above allows `analytics.events`, `reporting.daily_summary`, and `raw.events`. List lengths must match.
@@ -243,10 +251,13 @@ Datasets and tables are paired **positionally**: index 0 pairs with index 0. The
 {
   "mcpServers": {
     "bigquery": {
-      "url": "https://bigquery-readonly-mcp-XXXX.a.run.app/mcp",
-      "headers": {
-        "Authorization": "Bearer YOUR_MCP_API_KEY"
-      }
+      "command": ".local/bin/uvx",
+      "args": [
+        "mcp-proxy",
+        "--transport", "streamablehttp",
+        "-H", "x-api-key", "YOUR_MCP_API_KEY",
+        "https://bigquery-readonly-mcp-XXXX.a.run.app/mcp"
+      ]
     }
   }
 }
@@ -261,8 +272,8 @@ All configuration is via environment variables. Required vars abort startup if m
 | `GCP_PROJECT_ID` | Yes | — | The project where BigQuery jobs run |
 | `BQ_DATASET_ID` | Yes | — | Comma-separated list of datasets |
 | `BQ_ALLOWED_TABLE` | Yes | — | Comma-separated list of tables; paired positionally with `BQ_DATASET_ID` |
-| `MCP_API_KEY` | Yes | — | Bearer token clients must present |
-| `MCP_ADMIN_KEY` | No | — | Bearer token for `/admin` endpoint; if empty, admin endpoint is disabled |
+| `MCP_API_KEY` | Yes | — | API key clients must present |
+| `MCP_ADMIN_KEY` | No | — | API key for `/admin` endpoint; if empty, defaults to MCP_API_KEY |
 | `MAX_SCAN_MB` | No | `100` | Hard ceiling on bytes scanned per query (MB) |
 | `MAX_RESULT_ROWS` | No | `2000` | Result rows are truncated above this |
 | `BQ_JOB_TIMEOUT_SECS` | No | `30` | Per-query BigQuery timeout |
@@ -282,7 +293,7 @@ All configuration is via environment variables. Required vars abort startup if m
 The threat model is: **an AI agent is partially or fully untrusted, and may be invoked with adversarial input.** The controls are layered.
 
 1. **Network layer.** Cloud Run gives you HTTPS termination, optional Cloud Armor in front for IP allowlisting or WAF rules.
-2. **Auth layer.** Every request requires `Authorization: Bearer <key>` matched against `MCP_API_KEY` in constant time. Admin endpoint requires a second key.
+2. **Auth layer.** Every request requires an `x-api-key: <key>` header matched against `MCP_API_KEY` in constant time. Admin endpoint requires a separate `x-admin-key` header.
 3. **Body size limit.** Requests above `MAX_REQUEST_BODY_BYTES` are rejected before parsing.
 4. **Rate limit.** Token-bucket, per-instance. Misbehaving clients get `429`s.
 5. **SQL parser layer.** `sqlparse` decomposes every query. Non-`SELECT` statements, multi-statement bodies, DDL, DML, scripting, and procedural constructs are rejected.
@@ -330,7 +341,7 @@ The MCP endpoint will be at `http://localhost:8080/mcp` and `/health` returns se
 
 ```bash
 curl -X POST "https://your-service.run.app/admin/invalidate-cache" \
-  -H "Authorization: Bearer $MCP_ADMIN_KEY"
+  -H "x-admin-key: $MCP_ADMIN_KEY"
 ```
 
 ### Tail logs
@@ -359,7 +370,7 @@ LIMIT 100;
 
 - **One region per deployment.** Cloud Run is regional. For multi-region failover, deploy multiple instances behind a global load balancer.
 - **Cold starts.** Scale-to-zero means the first request after idle takes a few seconds. Set `--min-instances=1` to eliminate this at the cost of a few dollars per month.
-- **Single auth scheme.** Bearer token only. No OAuth, no mTLS out of the box (both are achievable via Cloud Run's IAM-based auth + an identity-aware proxy — see Operations).
+- **Single auth scheme.** API key in `x-api-key` header only. No OAuth, no mTLS out of the box (both are achievable via Cloud Run's IAM-based auth + an identity-aware proxy — see Operations).
 - **Schema cache is per-instance.** Each Cloud Run instance maintains its own. The admin endpoint invalidates the cache on the instance that receives the call; under load with multiple instances, you may want to roll a new revision instead.
 - **No streaming results.** Queries materialize fully server-side before truncation. Don't increase `MAX_RESULT_ROWS` beyond a few thousand without considering memory.
 
