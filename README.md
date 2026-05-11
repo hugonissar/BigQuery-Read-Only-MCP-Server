@@ -17,7 +17,7 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 
 ## 💬 Use case
 
-You: Give me the highest-converting campaign in the last 30 days.<br />
+You: Give me the highest-converting campaign in the last 30 days<br />
 LLM: *queries your data and returns the result*<br /><br />
 Connect once, query everything. Point it at your Google Analytics 4 export, or import Google Ads, Meta, and TikTok into BigQuery to analyze every campaign across every channel from a single agent.
 
