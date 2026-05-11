@@ -60,8 +60,6 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 
 **When to pick Google's server instead:** if you want forecasting and ARIMA out of the box, if you need Model Armor for prompt-injection scanning, or if you're comfortable letting the agent see everything the SA's IAM reaches and you don't need a hard scan ceiling.
 
-**When to pick `ergut/mcp-bigquery-server` instead:** if you need column-level masking (PII redaction) and you're running locally on a workstation.
-
 **When to pick this server:** anything else — especially production agents, customer-facing deployments, regulated environments, multi-tenant scenarios, and anywhere the words "scan budget" or "rate limit" matter.
 
 ## Architecture at a glance
@@ -69,7 +67,7 @@ It exists because the alternatives — including Google's official BigQuery MCP 
 ```
 ┌─────────────┐       HTTPS + X-API-KEY       ┌──────────────────────┐         IAM        ┌───────────┐
 │ MCP client  │ ────────────────────────────▶ │  Cloud Run service   │ ─────────────────▶ │ BigQuery  │
-│ (Claude /   │   API KEY                     │  bigquery-readonly-  │   service account  │  datasets │
+│ (Claude /   │            API KEY            │  bigquery-readonly-  │   service account  │  datasets │
 │  Cursor /   │                               │       mcp-server     │                    │  + tables │
 │  ChatGPT)   │                               │                      │                    │           │
 └─────────────┘                               │  • SQL allowlist     │                    └───────────┘
