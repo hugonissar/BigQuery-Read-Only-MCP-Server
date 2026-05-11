@@ -251,7 +251,7 @@ Datasets and tables are paired **positionally**: index 0 pairs with index 0. The
 {
   "mcpServers": {
     "bigquery": {
-      "command": ".local/bin/uvx",
+      "command": "/home/yourusername/.local/bin/uvx",
       "args": [
         "mcp-proxy",
         "--transport", "streamablehttp",
