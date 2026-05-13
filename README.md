@@ -318,7 +318,7 @@ What the server does **not** do (and you should know):
 ## 💻 Local development
 
 ```bash
-git clone https://github.com/YOUR_ORG/bigquery-readonly-mcp-server.git
+git clone https://github.com/hugonissar/bigquery-readonly-mcp-server.git
 cd bigquery-readonly-mcp-server
 
 python -m venv .venv
