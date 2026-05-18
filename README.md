@@ -10,6 +10,15 @@
 
 ---
 
+## 📚 Related writeups
+
+Long-form posts on this project at [hugonissar.github.io](https://hugonissar.github.io):
+
+- [**Self-hosted vs Google's official BigQuery MCP server: a security and cost comparison**](https://hugonissar.github.io/blog/bigquery-mcp-server-comparison/) — side-by-side feature comparison and when to pick each.
+- [**Stopping the $2,000 AI query: how to cap BigQuery scan cost from an MCP server**](https://hugonissar.github.io/blog/bigquery-cost-control-mcp/) — the three layers of cost control with example IAM bindings.
+
+Or read the [project overview](https://hugonissar.github.io/projects/bigquery-readonly-mcp-server/).
+
 ## 📖 What this is
 
 A production-ready **BigQuery MCP server** you deploy to your own GCP project. AI agents connect over HTTPS and can do exactly two things: read the schemas of tables you explicitly allowlist, and run `SELECT` queries against them — subject to a configurable scan budget, a result-row cap, and a token-bucket rate limit. Nothing else. No `DROP`, no `INSERT`, no schema discovery beyond what you allow, no surprise billing.
